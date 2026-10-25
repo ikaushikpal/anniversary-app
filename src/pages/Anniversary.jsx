@@ -12,7 +12,9 @@ import {
   Lock,
   Wand2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X,
+  RotateCcw
 } from "lucide-react";
 import { defaultConfig } from "../data/defaultConfig";
 import { getActiveConfig } from "../lib/configLoader";
@@ -87,6 +89,7 @@ export default function Anniversary() {
     }));
   }, []);
 
+  const letterCardRef = useRef(null);
   const letterEndRef = useRef(null);
   const letterText = letterMode === "short" ? config.shortLetter : config.longLetter;
   const { displayed: typedLetter, isDone: isLetterDone, skipToEnd: skipLetterToEnd } = useTypewriter(
@@ -100,6 +103,89 @@ export default function Anniversary() {
     setTimeout(() => {
       letterEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }, 50);
+  };
+
+  const handleToggleLetterMinimize = () => {
+    setIsLetterMinimized((prev) => {
+      const willMinimize = !prev;
+      if (willMinimize) {
+        if (letterCardRef.current) {
+          const rect = letterCardRef.current.getBoundingClientRect();
+          const targetScrollY = Math.max(0, window.scrollY + rect.top - 80);
+          window.scrollTo({
+            top: targetScrollY,
+            behavior: "instant"
+          });
+        }
+      }
+      return willMinimize;
+    });
+  };
+
+  const [photos, setPhotos] = useState(() =>
+    config.photos.map((photo, index) => ({
+      ...photo,
+      id: photo.id || `photo-${index}-${photo.src || ""}`
+    }))
+  );
+  const [exitDirections, setExitDirections] = useState({});
+  const galleryGridRef = useRef(null);
+  const [galleryHeight, setGalleryHeight] = useState(null);
+
+  useEffect(() => {
+    setPhotos(
+      config.photos.map((photo, index) => ({
+        ...photo,
+        id: photo.id || `photo-${index}-${photo.src || ""}`
+      }))
+    );
+  }, [config.photos]);
+
+  useEffect(() => {
+    if (!galleryGridRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === galleryGridRef.current) {
+          const h = Math.ceil(entry.target.offsetHeight || entry.contentRect.height);
+          if (h > 0) {
+            setGalleryHeight(h);
+          }
+        }
+      }
+    });
+    ro.observe(galleryGridRef.current);
+    const initialH = Math.ceil(galleryGridRef.current.offsetHeight);
+    if (initialH > 0) {
+      setGalleryHeight(initialH);
+    }
+    return () => ro.disconnect();
+  }, [photos]);
+
+  const handlePhotoSwipeEnd = (photoId, info) => {
+    const swipeThreshold = 75;
+    const velocityThreshold = 300;
+    if (
+      Math.abs(info.offset.x) > swipeThreshold ||
+      Math.abs(info.velocity.x) > velocityThreshold
+    ) {
+      const direction = info.offset.x > 0 || info.velocity.x > 0 ? 1 : -1;
+      setExitDirections((prev) => ({ ...prev, [photoId]: direction }));
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    }
+  };
+
+  const handleDismissPhoto = (photoId) => {
+    setExitDirections((prev) => ({ ...prev, [photoId]: 1 }));
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+  };
+
+  const handleRestorePhotos = () => {
+    setPhotos(
+      config.photos.map((photo, index) => ({
+        ...photo,
+        id: photo.id || `photo-${index}-${photo.src || ""}`
+      }))
+    );
   };
 
   const startDate = config.relationshipStartDate || config.anniversaryDate;
@@ -250,18 +336,27 @@ export default function Anniversary() {
         </div>
       </header>
 
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col gap-3">
+      <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2.5">
         <button
-          className={`glass flex items-center gap-2 rounded-full px-4 py-2 text-sm ${hasMusic ? "" : "opacity-60"
-            }`}
+          className={`glass relative flex h-10 w-10 sm:h-auto sm:w-auto items-center justify-center sm:justify-start gap-2 rounded-full p-0 sm:px-4 sm:py-2 text-sm shadow-glass transition-all hover:scale-105 active:scale-95 ${
+            hasMusic ? "" : "opacity-60 cursor-not-allowed"
+          }`}
           onClick={() => (isPlaying ? pause() : play())}
           disabled={!hasMusic}
+          title={hasMusic ? (isPlaying ? "Mute music" : "Play music") : "No music"}
+          aria-label={hasMusic ? (isPlaying ? "Mute music" : "Play music") : "No music"}
         >
-          {isPlaying ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-          {hasMusic ? (isPlaying ? "Mute" : "Play") : "No music"}
+          {isPlaying ? (
+            <Volume2 className="h-4 w-4 text-rose-500" />
+          ) : (
+            <VolumeX className="h-4 w-4 text-slate-500" />
+          )}
+          <span className="hidden sm:inline font-medium text-slate-700">
+            {hasMusic ? (isPlaying ? "Mute" : "Play") : "No music"}
+          </span>
         </button>
-        <div className="glass flex items-center gap-2 rounded-full px-4 py-2 text-xs">
-          <Music className="h-4 w-4" />
+        <div className="glass hidden sm:flex items-center gap-2 rounded-full px-4 py-2 text-xs shadow-glass">
+          <Music className="h-4 w-4 text-rose-500" />
           <input
             type="range"
             min="0"
@@ -270,6 +365,8 @@ export default function Anniversary() {
             value={volume}
             disabled={!hasMusic}
             onChange={(event) => updateVolume(Number(event.target.value))}
+            className="accent-rose-500 cursor-pointer"
+            aria-label="Volume slider"
           />
         </div>
       </div>
@@ -306,7 +403,7 @@ export default function Anniversary() {
       <section className="mx-auto max-w-4xl px-6 py-16 sm:px-10">
         <div className="space-y-12">
           {/* 1. Love Letter First (Full width on all screens) */}
-          <motion.div variants={shimmerVariants} initial="hidden" whileInView="visible">
+          <motion.div ref={letterCardRef} variants={shimmerVariants} initial="hidden" whileInView="visible">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 text-rose-500">
                 <Heart className="h-5 w-5" />
@@ -314,7 +411,7 @@ export default function Anniversary() {
               </div>
               <button
                 className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-white/85 px-3.5 py-1.5 text-xs font-medium text-rose-600 shadow-sm backdrop-blur transition hover:bg-rose-50"
-                onClick={() => setIsLetterMinimized((prev) => !prev)}
+                onClick={handleToggleLetterMinimize}
                 title={isLetterMinimized ? "Expand letter" : "Minimize letter"}
               >
                 {isLetterMinimized ? (
@@ -381,7 +478,7 @@ export default function Anniversary() {
                 <div className="flex items-center gap-2">
                   <button
                     className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-white/85 px-4 py-2 text-sm font-medium text-rose-600 shadow-sm backdrop-blur transition hover:bg-rose-50"
-                    onClick={() => setIsLetterMinimized((prev) => !prev)}
+                    onClick={handleToggleLetterMinimize}
                     title={isLetterMinimized ? "Expand letter" : "Minimize letter"}
                   >
                     {isLetterMinimized ? (
@@ -445,45 +542,118 @@ export default function Anniversary() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 py-16 sm:px-10">
+      <section className="mx-auto max-w-6xl px-6 py-16 sm:px-10 overflow-hidden">
         <motion.div variants={shimmerVariants} initial="hidden" whileInView="visible">
-          <div className="flex items-center gap-3 text-rose-500">
-            <Sparkles className="h-5 w-5" />
-            <h2 className="font-display text-3xl">Memory Gallery</h2>
-          </div>
-          <div className="mt-8 grid gap-6 md:grid-cols-3">
-            {config.photos.map((photo, index) => (
-              <motion.div
-                key={`photo-${index}`}
-                className="relative rounded-3xl bg-white/80 p-4 shadow-glass"
-                drag
-                whileHover={{ rotate: -2, y: -8 }}
-                onPointerDown={() => {
-                  const timer = setTimeout(() => setVoiceNote(true), 600);
-                  const clear = () => clearTimeout(timer);
-                  window.addEventListener("pointerup", clear, { once: true });
-                  window.addEventListener("pointercancel", clear, { once: true });
-                }}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3 text-rose-500">
+                <Sparkles className="h-5 w-5" />
+                <h2 className="font-display text-3xl">Memory Gallery</h2>
+              </div>
+              <p className="mt-1 text-xs text-rose-400/80">
+                Swipe photos left or right to explore each moment
+              </p>
+            </div>
+            {photos.length < config.photos.length && (
+              <button
+                type="button"
+                onClick={handleRestorePhotos}
+                className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-white/85 px-3.5 py-1.5 text-xs font-medium text-rose-600 shadow-sm backdrop-blur transition hover:bg-rose-50"
               >
-                <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br from-rose-100 via-white to-lavender">
-                  {photo.src ? (
-                    <img
-                      src={photo.src}
-                      alt={photo.caption || "memory"}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                      Add a photo
+                <RotateCcw className="h-3 w-3" /> Restore all ({config.photos.length - photos.length})
+              </button>
+            )}
+          </div>
+
+          <div
+            className="relative mt-8 overflow-hidden transition-[height] duration-700 ease-[cubic-bezier(0.25,1,0.5,1)]"
+            style={{
+              height: galleryHeight ? `${galleryHeight}px` : "auto"
+            }}
+          >
+            <div ref={galleryGridRef} className="relative grid gap-6 md:grid-cols-3">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {photos.map((photo) => (
+                  <motion.div
+                    key={photo.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{
+                      x: (exitDirections[photo.id] || 1) * 350,
+                      opacity: 0,
+                      scale: 0.9,
+                      rotate: (exitDirections[photo.id] || 1) * 8,
+                      transition: { duration: 0.35, ease: "easeOut" }
+                    }}
+                    transition={{
+                      layout: { duration: 0.7, ease: [0.25, 1, 0.5, 1] }
+                    }}
+                    drag="x"
+                    dragDirectionLock
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.75}
+                    onDragEnd={(e, info) => handlePhotoSwipeEnd(photo.id, info)}
+                    whileHover={{ y: -6, transition: { duration: 0.2 } }}
+                    whileTap={{ scale: 0.98 }}
+                    className="relative rounded-3xl bg-white/80 p-4 shadow-glass cursor-grab active:cursor-grabbing touch-pan-y select-none"
+                    onPointerDown={() => {
+                      const timer = setTimeout(() => setVoiceNote(true), 600);
+                      const clear = () => clearTimeout(timer);
+                      window.addEventListener("pointerup", clear, { once: true });
+                      window.addEventListener("pointercancel", clear, { once: true });
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDismissPhoto(photo.id);
+                      }}
+                      className="absolute top-6 right-6 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-slate-400 backdrop-blur transition hover:bg-rose-50 hover:text-rose-600 shadow-sm opacity-70 hover:opacity-100"
+                      title="Swipe out memory"
+                      aria-label="Swipe out memory"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br from-rose-100 via-white to-lavender pointer-events-none">
+                      {photo.src ? (
+                        <img
+                          src={photo.src}
+                          alt={photo.caption || "memory"}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          draggable={false}
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                          Add a photo
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <p className="mt-3 text-center text-sm text-slate-600">
-                  {photo.caption || "A soft memory"}
+                    <p className="mt-3 text-center text-sm text-slate-600 pointer-events-none">
+                      {photo.caption || "A soft memory"}
+                    </p>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+            {photos.length === 0 && (
+              <div className="flex flex-col items-center justify-center rounded-3xl bg-white/70 p-10 text-center backdrop-blur shadow-glass">
+                <Sparkles className="h-10 w-10 text-rose-400 animate-pulse" />
+                <h3 className="mt-4 font-display text-2xl text-slate-700">All memories visited ✨</h3>
+                <p className="mt-2 text-sm text-slate-500 max-w-sm">
+                  Every moment we shared is unforgettable. Tap below to bring back the memories.
                 </p>
-              </motion.div>
-            ))}
+                <button
+                  type="button"
+                  onClick={handleRestorePhotos}
+                  className="mt-6 flex items-center gap-2 rounded-full bg-rose-500 px-6 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-rose-600 transition"
+                >
+                  <RotateCcw className="h-4 w-4" /> Relive all memories
+                </button>
+              </div>
+            )}
           </div>
           <AnimatePresence>
             {voiceNote && (

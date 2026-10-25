@@ -12,8 +12,15 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
   font-family: "Quicksand", sans-serif;
   background: #fdf7fb;
   color: #111827;
