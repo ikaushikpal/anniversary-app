@@ -133,5 +133,11 @@ export const defaultConfig = {
   music: {
     source: "/music/our-song.mp3",
     volume: 0.6
+  },
+  secretAudio: {
+    source: "",
+    volume: 0.8,
+    message: "You are my favorite forever. 💖",
+    buttonText: "Double click me"
   }
 };

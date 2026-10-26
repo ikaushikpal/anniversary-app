@@ -4,12 +4,26 @@ import { loadConfig, saveConfig, clearConfig } from "./storage";
 import { IS_DEV } from "./env";
 
 export function getActiveConfig() {
-  if (!IS_DEV) {
-    // Production mode: Only read metadata.json
-    return metadata ?? defaultConfig;
-  }
-  // Dev mode: check draft from localStorage first, then metadata.json, then defaultConfig
-  return loadConfig() ?? metadata ?? defaultConfig;
+  return {
+    ...defaultConfig,
+    ...metadata,
+    secretAudio: {
+      ...defaultConfig.secretAudio,
+      ...(metadata?.secretAudio || {})
+    },
+    music: {
+      ...defaultConfig.music,
+      ...(metadata?.music || {})
+    },
+    theme: {
+      ...defaultConfig.theme,
+      ...(metadata?.theme || {})
+    },
+    surprise: {
+      ...defaultConfig.surprise,
+      ...(metadata?.surprise || {})
+    }
+  };
 }
 
 export async function saveMetadata(config) {

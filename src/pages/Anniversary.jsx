@@ -14,11 +14,15 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  RotateCcw
+  RotateCcw,
+  Play,
+  Pause
 } from "lucide-react";
+import metadata from "../data/metadata.json";
 import { defaultConfig } from "../data/defaultConfig";
 import { getActiveConfig } from "../lib/configLoader";
 import { IS_DEV } from "../lib/env";
+import { playChimeSound } from "../lib/soundEffects";
 import useTypewriter from "../hooks/useTypewriter";
 import useAudio from "../hooks/useAudio";
 
@@ -51,7 +55,7 @@ function useTimeTogether(startDate) {
 
 export default function Anniversary() {
   const location = useLocation();
-  const config = useMemo(() => getActiveConfig(), []);
+  const config = useMemo(() => getActiveConfig(), [metadata]);
   const [started, setStarted] = useState(false);
   const [letterMode, setLetterMode] = useState(config.letterMode);
   const [isLetterMinimized, setIsLetterMinimized] = useState(false);
@@ -190,7 +194,7 @@ export default function Anniversary() {
 
   const startDate = config.relationshipStartDate || config.anniversaryDate;
   const { days, hours, minutes } = useTimeTogether(startDate);
-  const { isPlaying, play, pause, volume, updateVolume } = useAudio(
+  const { isPlaying, play, pause, volume, updateVolume, duck } = useAudio(
     config.music.source,
     config.music.volume
   );
@@ -221,6 +225,132 @@ export default function Anniversary() {
     if (config.surprise.unlock !== "click") return;
     if (clickCount >= config.surprise.clickCount) setSurpriseUnlocked(true);
   }, [clickCount, config.surprise]);
+
+  const [secretAudioPlaying, setSecretAudioPlaying] = useState(false);
+  const secretAudioRef = useRef(null);
+  const musicWasPlayingRef = useRef(false);
+  const lastClickTimeRef = useRef(0);
+  const lastDoubleTriggerRef = useRef(0);
+
+  const stopSecretAudio = () => {
+    if (secretAudioRef.current) {
+      secretAudioRef.current.pause();
+      secretAudioRef.current.currentTime = 0;
+    }
+    setSecretAudioPlaying(false);
+    if (musicWasPlayingRef.current) {
+      play();
+      musicWasPlayingRef.current = false;
+    }
+  };
+
+  const playSecretAudio = () => {
+    const src = config.secretAudio?.source;
+    const vol = config.secretAudio?.volume ?? 1.0;
+
+    if (secretAudioPlaying) {
+      stopSecretAudio();
+      return;
+    }
+
+    // Stop background music completely so the sound/voice note is heard crystal clear
+    if (isPlaying) {
+      musicWasPlayingRef.current = true;
+      pause(true);
+    }
+
+    if (src) {
+      if (!secretAudioRef.current || secretAudioRef.current.src !== src) {
+        if (secretAudioRef.current) {
+          secretAudioRef.current.pause();
+        }
+        const audio = new Audio();
+        audio.src = src;
+        audio.preload = "auto";
+        secretAudioRef.current = audio;
+      }
+      const audio = secretAudioRef.current;
+      audio.volume = Math.max(0, Math.min(1, vol));
+      audio.currentTime = 0;
+
+      audio.onended = () => {
+        setSecretAudioPlaying(false);
+        // Resume background music when sound ends
+        if (musicWasPlayingRef.current) {
+          play();
+          musicWasPlayingRef.current = false;
+        }
+      };
+
+      audio.onerror = (e) => {
+        console.warn("Audio playback error, playing chime fallback:", e);
+        setSecretAudioPlaying(false);
+        playChimeSound(vol);
+        setTimeout(() => {
+          if (musicWasPlayingRef.current) {
+            play();
+            musicWasPlayingRef.current = false;
+          }
+        }, 1600);
+      };
+
+      audio.play().then(() => {
+        setSecretAudioPlaying(true);
+      }).catch((err) => {
+        console.warn("Audio playback failed, falling back to chime:", err);
+        setSecretAudioPlaying(false);
+        playChimeSound(vol);
+        setTimeout(() => {
+          if (musicWasPlayingRef.current) {
+            play();
+            musicWasPlayingRef.current = false;
+          }
+        }, 1600);
+      });
+    } else {
+      // Short romantic chime melody
+      playChimeSound(vol);
+      setSecretAudioPlaying(true);
+      setTimeout(() => {
+        setSecretAudioPlaying(false);
+        if (musicWasPlayingRef.current) {
+          play();
+          musicWasPlayingRef.current = false;
+        }
+      }, 1600);
+    }
+  };
+
+  const handleDoubleAction = () => {
+    const now = Date.now();
+    if (now - lastDoubleTriggerRef.current < 350) return;
+    lastDoubleTriggerRef.current = now;
+
+    setSecretOpen((prev) => !prev);
+    playSecretAudio();
+  };
+
+  const handleSingleClick = () => {
+    setClickCount((prev) => prev + 1);
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < 450) {
+      handleDoubleAction();
+    }
+    lastClickTimeRef.current = now;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (secretAudioRef.current) {
+        secretAudioRef.current.pause();
+        secretAudioRef.current = null;
+      }
+      if (musicWasPlayingRef.current) {
+        play();
+        musicWasPlayingRef.current = false;
+      }
+    };
+  }, []);
 
   const paletteClass = useMemo(() => {
     switch (config.theme.palette) {
@@ -520,21 +650,63 @@ export default function Anniversary() {
               Tap the heart to unlock a secret whisper.
             </p>
             <button
-              className="mt-6 mx-auto flex items-center gap-2 rounded-full bg-rose-500 px-5 py-2.5 text-white shadow-glow hover:bg-rose-600 transition"
-              onDoubleClick={() => setSecretOpen((prev) => !prev)}
-              onClick={() => setClickCount((prev) => prev + 1)}
+              type="button"
+              className={`mt-6 mx-auto flex items-center gap-2 rounded-full px-5 py-2.5 text-white shadow-glow transition select-none ${
+                secretAudioPlaying
+                  ? "bg-rose-600 ring-4 ring-rose-200 animate-pulse"
+                  : "bg-rose-500 hover:bg-rose-600 active:scale-95"
+              }`}
+              onDoubleClick={handleDoubleAction}
+              onClick={handleSingleClick}
             >
-              <Heart className="h-4 w-4" /> Double click me
+              {secretAudioPlaying ? (
+                <>
+                  <Volume2 className="h-4 w-4 animate-bounce" />
+                  <span>Playing whisper...</span>
+                </>
+              ) : (
+                <>
+                  <Heart className="h-4 w-4" />
+                  <span>{config.secretAudio?.buttonText || "Double click me"}</span>
+                </>
+              )}
             </button>
             <AnimatePresence>
               {secretOpen && (
                 <motion.div
-                  className="mt-4 rounded-2xl bg-white/70 p-4 text-sm"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
+                  className="mt-5 rounded-2xl bg-white/80 p-5 shadow-glass text-center border border-rose-100"
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
                 >
-                  You are my favorite forever. 💖
+                  <p className="text-slate-700 font-medium text-sm sm:text-base">
+                    {config.secretAudio?.message || "You are my favorite forever. 💖"}
+                  </p>
+                  <div className="mt-4 flex items-center justify-center gap-3 pt-3 border-t border-rose-100/80">
+                    <button
+                      type="button"
+                      onClick={playSecretAudio}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-500/20 transition"
+                      title={secretAudioPlaying ? "Pause audio" : "Play audio"}
+                    >
+                      {secretAudioPlaying ? (
+                        <>
+                          <Pause className="h-3.5 w-3.5" /> Pause Audio
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5 fill-current" /> Play Audio
+                        </>
+                      )}
+                    </button>
+                    {secretAudioPlaying && (
+                      <span className="flex items-center gap-1 text-xs text-rose-500">
+                        <span className="inline-block h-2 w-1 animate-pulse rounded-full bg-rose-500" />
+                        <span className="inline-block h-3.5 w-1 animate-bounce rounded-full bg-rose-600" />
+                        <span className="inline-block h-2 w-1 animate-pulse rounded-full bg-rose-500" />
+                      </span>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

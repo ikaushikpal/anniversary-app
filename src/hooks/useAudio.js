@@ -6,6 +6,10 @@ export default function useAudio(src, initialVolume = 0.6) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(initialVolume);
 
+  const fadeIntervalRef = useRef(null);
+  const previousVolumeRef = useRef(initialVolume);
+  const isDuckedRef = useRef(false);
+
   useEffect(() => {
     if (!src) return;
     const audio = new Audio(src);
@@ -20,6 +24,9 @@ export default function useAudio(src, initialVolume = 0.6) {
     audio.addEventListener("error", onError);
 
     return () => {
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+      }
       audio.pause();
       audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("error", onError);
@@ -27,21 +34,50 @@ export default function useAudio(src, initialVolume = 0.6) {
     };
   }, [src]);
 
-  const fadeTo = (target, duration = 1000) => {
+  const fadeTo = (target, duration = 800) => {
     const audio = audioRef.current;
     if (!audio) return;
 
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+
+    const safeTarget = Math.max(0, Math.min(1, target));
     const steps = 20;
     const stepTime = duration / steps;
     const start = audio.volume;
-    const delta = (target - start) / steps;
+    const delta = (safeTarget - start) / steps;
     let current = 0;
 
-    const interval = setInterval(() => {
+    fadeIntervalRef.current = setInterval(() => {
       current += 1;
       audio.volume = Math.max(0, Math.min(1, start + delta * current));
-      if (current >= steps) clearInterval(interval);
+      if (current >= steps) {
+        audio.volume = safeTarget;
+        clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+      }
     }, stepTime);
+  };
+
+  const duck = (isDucked) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isDucked) {
+      // Remember current volume before ducking
+      if (!isDuckedRef.current) {
+        previousVolumeRef.current = volume;
+        isDuckedRef.current = true;
+      }
+      // Make background sound 0.1 so the short sound can be heard clearly
+      fadeTo(0.1, 200);
+    } else {
+      isDuckedRef.current = false;
+      // Resume to previous volume
+      const target = previousVolumeRef.current ?? volume ?? initialVolume;
+      fadeTo(target, 500);
+    }
   };
 
   const play = async () => {
@@ -56,21 +92,33 @@ export default function useAudio(src, initialVolume = 0.6) {
     }
   };
 
-  const pause = () => {
+  const pause = (immediate = false) => {
     const audio = audioRef.current;
     if (!audio) return;
-    fadeTo(0, 800);
+    if (immediate) {
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+      }
+      audio.pause();
+      setIsPlaying(false);
+      return;
+    }
+    fadeTo(0, 600);
     setTimeout(() => {
       audio.pause();
       setIsPlaying(false);
-    }, 850);
+    }, 650);
   };
 
   const updateVolume = (nextVolume) => {
     setVolume(nextVolume);
+    previousVolumeRef.current = nextVolume;
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = nextVolume;
+    if (!isDuckedRef.current) {
+      audio.volume = nextVolume;
+    }
   };
 
   return {
@@ -79,6 +127,8 @@ export default function useAudio(src, initialVolume = 0.6) {
     volume,
     play,
     pause,
-    updateVolume
+    updateVolume,
+    fadeTo,
+    duck
   };
 }

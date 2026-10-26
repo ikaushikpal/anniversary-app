@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import {
   Sparkles,
@@ -14,9 +14,12 @@ import {
   Download,
   Upload,
   RefreshCw,
-  GripVertical
+  GripVertical,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { defaultConfig } from "../data/defaultConfig";
+import { playChimeSound } from "../lib/soundEffects";
 import {
   getActiveConfig,
   saveMetadata,
@@ -132,7 +135,7 @@ export default function Creator() {
   const updateNested = (parent, nextValues) => {
     setConfig((prev) => ({
       ...prev,
-      [parent]: { ...prev[parent], ...nextValues }
+      [parent]: { ...(prev[parent] || {}), ...nextValues }
     }));
   };
 
@@ -285,6 +288,73 @@ export default function Creator() {
       setTimeout(() => setStatusMessage(""), 4000);
     }
   };
+
+  const [testingSecretAudio, setTestingSecretAudio] = useState(false);
+  const secretAudioTestRef = useRef(null);
+
+  const toggleTestSecretAudio = () => {
+    if (testingSecretAudio) {
+      if (secretAudioTestRef.current) {
+        secretAudioTestRef.current.pause();
+        secretAudioTestRef.current.currentTime = 0;
+      }
+      setTestingSecretAudio(false);
+      return;
+    }
+
+    const src = config.secretAudio?.source;
+    const vol = config.secretAudio?.volume ?? 0.8;
+
+    if (src) {
+      if (!secretAudioTestRef.current || secretAudioTestRef.current.src !== src) {
+        if (secretAudioTestRef.current) {
+          secretAudioTestRef.current.pause();
+        }
+        secretAudioTestRef.current = new Audio(src);
+      }
+      const audio = secretAudioTestRef.current;
+      audio.volume = vol;
+      audio.currentTime = 0;
+      audio.onended = () => setTestingSecretAudio(false);
+      audio.onerror = () => {
+        setTestingSecretAudio(false);
+        playChimeSound(vol);
+      };
+      audio.play().then(() => setTestingSecretAudio(true)).catch(() => {
+        setTestingSecretAudio(false);
+        playChimeSound(vol);
+      });
+    } else {
+      playChimeSound(vol);
+      setTestingSecretAudio(true);
+      setTimeout(() => setTestingSecretAudio(false), 2000);
+    }
+  };
+
+  const handleSecretAudioUpload = async (file) => {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const filePath = await uploadMediaFile(file, "music");
+      updateNested("secretAudio", { source: filePath });
+      setStatusMessage(`Secret audio saved directly to ${filePath}!`);
+    } catch (error) {
+      console.error("Secret audio upload failed", error);
+      setStatusMessage("Audio upload failed. Try manual copy to public/music/");
+    } finally {
+      setUploading(false);
+      setTimeout(() => setStatusMessage(""), 4000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (secretAudioTestRef.current) {
+        secretAudioTestRef.current.pause();
+        secretAudioTestRef.current = null;
+      }
+    };
+  }, []);
 
   const handleSaveToMetadata = async () => {
     setSaving(true);
@@ -540,6 +610,104 @@ export default function Creator() {
                       updateNested("music", { volume: Number(event.target.value) })
                     }
                   />
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-rose-200/60 bg-white/50 p-5 backdrop-blur-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Heart className="h-5 w-5 text-rose-500" />
+                    <h2 className="font-display text-xl">Double-Click Audio Note</h2>
+                  </div>
+                  <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-[11px] font-semibold text-rose-600">
+                    &quot;Double click me&quot;
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Plays a special audio message or cute chime when your partner double-clicks the &quot;Double click me&quot; button in Tiny Rituals.
+                </p>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Audio Source (URL or file)</label>
+                    <input
+                      placeholder="/music/secret-whisper.mp3 or external audio URL"
+                      className="mt-1 w-full rounded-2xl border border-white/70 bg-white/80 px-4 py-2.5 text-sm"
+                      value={config.secretAudio?.source || ""}
+                      onChange={(event) =>
+                        updateNested("secretAudio", { source: event.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Upload Audio File (.mp3, .m4a, voice memo)</label>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="mt-1 block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-rose-50 file:text-rose-600 hover:file:bg-rose-100 cursor-pointer"
+                      onChange={(event) => handleSecretAudioUpload(event.target.files[0])}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 pt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-slate-500">Volume</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={config.secretAudio?.volume ?? 0.8}
+                        onChange={(event) =>
+                          updateNested("secretAudio", { volume: Number(event.target.value) })
+                        }
+                      />
+                      <span className="text-xs text-slate-400">
+                        {Math.round((config.secretAudio?.volume ?? 0.8) * 100)}%
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={toggleTestSecretAudio}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition shadow-sm"
+                    >
+                      {testingSecretAudio ? (
+                        <>
+                          <VolumeX className="h-3.5 w-3.5" /> Stop Preview
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="h-3.5 w-3.5" /> Test Audio
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Whisper Message Text</label>
+                    <input
+                      placeholder="You are my favorite forever. 💖"
+                      className="mt-1 w-full rounded-2xl border border-white/70 bg-white/80 px-4 py-2.5 text-sm"
+                      value={config.secretAudio?.message ?? "You are my favorite forever. 💖"}
+                      onChange={(event) =>
+                        updateNested("secretAudio", { message: event.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Button Label</label>
+                    <input
+                      placeholder="Double click me"
+                      className="mt-1 w-full rounded-2xl border border-white/70 bg-white/80 px-4 py-2.5 text-sm"
+                      value={config.secretAudio?.buttonText ?? "Double click me"}
+                      onChange={(event) =>
+                        updateNested("secretAudio", { buttonText: event.target.value })
+                      }
+                    />
+                  </div>
                 </div>
               </div>
             </div>
