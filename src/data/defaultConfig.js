@@ -3,6 +3,7 @@ export const defaultConfig = {
   partnerName: "Batu",
   relationshipStartDate: "2024-11-01",
   anniversaryDate: "2024-11-01",
+  timezone: "Asia/Kolkata",
   shortLetter:
     "365 days of holding your hand, laughter, and unconditional love. This November 1st marks our very first anniversary, and next year you become my wife. Happy Anniversary, my forever love.",
   longLetter:

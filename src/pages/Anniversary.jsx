@@ -23,6 +23,7 @@ import { defaultConfig } from "../data/defaultConfig";
 import { getActiveConfig } from "../lib/configLoader";
 import { IS_DEV } from "../lib/env";
 import { playChimeSound } from "../lib/soundEffects";
+import { calculateTimeTogether, getISTHour } from "../lib/time";
 import useTypewriter from "../hooks/useTypewriter";
 import useAudio from "../hooks/useAudio";
 
@@ -37,20 +38,16 @@ const floatVariants = {
 };
 
 function useTimeTogether(startDate) {
-  const [now, setNow] = useState(() => new Date());
+  const [time, setTime] = useState(() => calculateTimeTogether(startDate));
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => {
+      setTime(calculateTimeTogether(startDate));
+    }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [startDate]);
 
-  const start = new Date(startDate);
-  const diff = Math.max(0, now - start);
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-  const minutes = Math.floor((diff / (1000 * 60)) % 60);
-
-  return { days, hours, minutes };
+  return time;
 }
 
 export default function Anniversary() {
@@ -67,7 +64,7 @@ export default function Anniversary() {
   const surpriseRef = useRef(null);
   const hasMusic = Boolean(config.music.source);
   const nightMode = useMemo(() => {
-    const hour = new Date().getHours();
+    const hour = getISTHour();
     return hour >= 0 && hour <= 4;
   }, []);
 

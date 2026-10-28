@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { defaultConfig } from "../data/defaultConfig";
 import { playChimeSound } from "../lib/soundEffects";
+import { getISTDateString } from "../lib/time";
 import {
   getActiveConfig,
   saveMetadata,
@@ -154,7 +155,7 @@ export default function Creator() {
         ...prev.timeline,
         {
           title: "New Chapter",
-          date: new Date().toISOString().slice(0, 10),
+          date: getISTDateString(),
           emoji: "✨",
           description: "A memory we will always cherish."
         }
@@ -464,11 +465,19 @@ export default function Creator() {
             </div>
           </div>
 
-          <div className="mt-8 rounded-2xl bg-white/60 p-4 text-center text-sm text-slate-600">
-            Previewing story for:{" "}
-            <span className="font-semibold text-rose-600">
-              {config.creatorName || "You"} ❤️ {config.partnerName || "Your Love"}
-            </span>
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-white/60 p-4 text-sm text-slate-600">
+            <div>
+              Previewing story for:{" "}
+              <span className="font-semibold text-rose-600">
+                {config.creatorName || "You"} ❤️ {config.partnerName || "Your Love"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-medium text-rose-500">
+              <span>Timezone:</span>
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1">
+                IST (Asia/Kolkata • UTC+5:30)
+              </span>
+            </div>
           </div>
         </section>
 
